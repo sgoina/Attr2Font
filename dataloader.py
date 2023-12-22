@@ -16,7 +16,7 @@ class ImageAttr(data.Dataset):
     """Dataset class for the ImageAttr dataset."""
     def __init__(self, image_dir, attr_path, transform, mode,
                  binary=False, n_style=4,
-                 char_num=52, unsuper_num=968, train_num=120, val_num=28):
+                 char_num=62, unsuper_num=968, train_num=120, val_num=28):
         """Initialize and preprocess the ImageAttr dataset."""
         self.image_dir = image_dir
         self.attr_path = attr_path
@@ -42,7 +42,8 @@ class ImageAttr(data.Dataset):
         for super_font in range(self.train_font_num+self.val_font_num):
             self.test_super_unsuper[super_font] = random.randint(0, self.unsupervised_font_num - 1)
 
-        self.char_idx_offset = 10
+        self.char_idx_offset = 0
+
 
         self.chars = [c for c in range(self.char_idx_offset, self.char_idx_offset+self.char_num)]
 
@@ -50,8 +51,11 @@ class ImageAttr(data.Dataset):
 
         if mode == 'train':
             self.num_images = len(self.super_train_dataset) + len(self.unsuper_train_dataset)
+            print(len(self.super_train_dataset))
+            print(len(self.unsuper_train_dataset))
         else:
             self.num_images = len(self.super_test_dataset)
+            print(len(self.super_test_dataset))
 
     def preprocess(self):
         """Preprocess the font attribute file."""
@@ -81,7 +85,7 @@ class ImageAttr(data.Dataset):
                 else:
                     attr_value.append(eval(val) / 100.0)
 
-            # print(filename, char_class, font_class, attr_value)
+            # print(filename, char_class, font_class)
 
             if i < train_size:
                 self.super_train_dataset.append([filename, char_class, font_class, attr_value])
@@ -161,7 +165,10 @@ class ImageAttr(data.Dataset):
             styles_A.append(filename_A)
         else:
             for char in style_chars:
-                styles_A.append(rreplace(filename_A, str(charclass_A+10), str(char), 1))
+                styles_A.append(
+                    rreplace(filename_A, str(charclass_A).zfill(2), str(char).zfill(2), 1))
+                # print(rreplace(filename_A, str(charclass_A).zfill(2), str(char), 1))
+                # print(f'this is {filename_A}')
 
         random.shuffle(self.chars)
         style_chars = self.chars[:self.n_style]
@@ -170,7 +177,8 @@ class ImageAttr(data.Dataset):
             styles_B.append(filename_B)
         else:
             for char in style_chars:
-                styles_B.append(rreplace(filename_B, str(charclass_B+10), str(char), 1))
+                styles_B.append(
+                    rreplace(filename_B, str(charclass_B).zfill(2), str(char).zfill(2), 1))
 
         image_A = Image.open(os.path.join(self.image_dir, filename_A)).convert('RGB')
         image_B = Image.open(os.path.join(self.image_dir, filename_B)).convert('RGB')
@@ -203,7 +211,7 @@ class ImageAttr(data.Dataset):
 def get_loader(image_dir, attr_path, image_size=256,
                batch_size=16, dataset_name='explor_all', mode='train', num_workers=8,
                binary=False, n_style=4,
-               char_num=52, unsuper_num=968, train_num=120, val_num=28):
+               char_num=62, unsuper_num=968, train_num=120, val_num=28):
     """Build and return a data loader."""
     transform = []
     transform.append(T.Resize(image_size))
@@ -214,7 +222,7 @@ def get_loader(image_dir, attr_path, image_size=256,
     if dataset_name == 'explor_all':
         dataset = ImageAttr(image_dir, attr_path, transform,
                             mode, binary, n_style,
-                            char_num=52, unsuper_num=968,
+                            char_num=62, unsuper_num=968,
                             train_num=120, val_num=28)
     data_loader = data.DataLoader(dataset=dataset,
                                   drop_last=True,

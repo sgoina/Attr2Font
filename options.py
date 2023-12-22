@@ -4,7 +4,7 @@ import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--init_epoch", type=int, default=1, help="epoch to start training from")
-    parser.add_argument("--n_epochs", type=int, default=500, help="number of epochs of training")
+    parser.add_argument("--n_epochs", type=int, default=30, help="number of epochs of training")
     parser.add_argument("--decay_epoch", type=int, default=50, help="epoch from which to start lr decay")
     parser.add_argument("--multi_gpu", type=bool, default=True, help="whether or not multi gpus")
     # Data

@@ -1,0 +1,2 @@
+conda activate tll
+python main.py --phase train

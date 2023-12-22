@@ -4,6 +4,7 @@ import time
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torchvision.utils import save_image
 
 from dataloader import get_loader
@@ -38,7 +39,7 @@ def train(opts):
 
     # Path to data
     image_dir = os.path.join(opts.data_root, opts.dataset_name, "image")
-    attribute_path = os.path.join(opts.data_root, opts.dataset_name, "attributes.txt")
+    attribute_path = os.path.join(opts.data_root, opts.dataset_name, "attributes2.txt")
 
     # Dataloader
     train_dataloader = get_loader(image_dir, attribute_path,
@@ -148,7 +149,6 @@ def train(opts):
 
             # Forward G and D
             fake_B, content_logits_A = generator(img_A, styles_A, delta_intensity, delta_attr)
-
             pred_fake, real_A_attr_fake, fake_B_attr_fake = discriminator(img_A, fake_B, charclass_B, attr_B_intensity)
 
             if opts.lambda_cx > 0:
@@ -160,7 +160,7 @@ def train(opts):
             loss_pixel = opts.lambda_l1 * criterion_pixel(fake_B, img_B)
 
             loss_char_A = criterion_ce(content_logits_A, charclass_A.view(charclass_A.size(0)))  # +
-            loss_char_A = opts.lambda_char * loss_char_A
+            loss_char_A = opts.lambda_char * F.cross_entropy(content_logits_A, charclass_A.view(-1))
 
             loss_attr = torch.zeros(1).to(device)
             if opts.dis_pred:
@@ -302,7 +302,7 @@ def test_one_epoch(opts, test_logfile, test_epoch,
 
     with torch.no_grad():
         test_attrid = torch.tensor([i for i in range(opts.attr_channel)]).to(device)
-        test_attrid = test_attrid.repeat(52, 1)
+        test_attrid = test_attrid.repeat(62, 1)
         test_l1_loss = torch.zeros(1).to(device)
 
         for test_idx, test_batch in enumerate(test_dataloader):
@@ -333,9 +333,14 @@ def test_one_epoch(opts, test_logfile, test_epoch,
             test_fake_B, _ = generator(test_img_A, test_styles_A, test_intensity, test_attr)
             test_l1_loss += criterion_pixel(test_fake_B, test_img_B)
 
-            img_sample = torch.cat((test_img_A.data, test_fake_B.data, test_img_B.data), -2)
-            save_file = os.path.join(results_dir, f"test_{test_epoch}_idx_{test_idx}.png")
-            save_image(img_sample, save_file, nrow=52, normalize=True)
+            i=0
+            for character in test_fake_B:
+                save_file = os.path.join(results_dir, f"{str(i).zfill(2)}.png")
+                save_image(255-character, save_file, nrow=1, normalize=True)
+                i+=1
+            # img_sample = torch.cat((test_img_A.data, test_fake_B.data, test_img_B.data), -2)
+            # save_file = os.path.join(results_dir, f"test_{test_epoch}_idx_{test_idx}.png")
+            # save_image(img_sample, save_file, nrow=62, normalize=True)
 
         test_l1_loss = test_l1_loss / len(test_dataloader)
         test_msg = (
@@ -355,12 +360,12 @@ def test(opts):
 
     # Path to data
     image_dir = os.path.join(opts.data_root, opts.dataset_name, "image")
-    attribute_path = os.path.join(opts.data_root, opts.dataset_name, "attributes.txt")
+    attribute_path = os.path.join(opts.data_root, opts.dataset_name, "attributes2.txt")
 
     test_dataloader = get_loader(image_dir, attribute_path,
                                  dataset_name=opts.dataset_name,
                                  image_size=opts.img_size,
-                                 n_style=opts.n_style, batch_size=52,
+                                 n_style=opts.n_style, batch_size=62,
                                  mode='test', binary=False)
 
     # Model
@@ -407,7 +412,7 @@ def interp(opts):
 
     # Path to data
     image_dir = os.path.join(opts.data_root, opts.dataset_name, "image")
-    attribute_path = os.path.join(opts.data_root, opts.dataset_name, "attributes.txt")
+    attribute_path = os.path.join(opts.data_root, opts.dataset_name, "attributes4.txt")
 
     test_dataloader = get_loader(image_dir, attribute_path,
                                  dataset_name=opts.dataset_name,

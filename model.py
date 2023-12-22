@@ -21,22 +21,56 @@ def get_model_parameters(model):
     return total_parameters
 
 
+# class ResidualBlock(nn.Module):
+#     def __init__(self, in_channel):
+#         super(ResidualBlock, self).__init__()
+
+#         conv_block = [
+#             nn.Conv2d(in_channel, in_channel, 3, stride=1, padding=1, bias=False),
+#             nn.InstanceNorm2d(in_channel),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(in_channel, in_channel, 3, stride=1, padding=1, bias=False),
+#             nn.InstanceNorm2d(in_channel),
+#         ]
+
+#         self.conv_block = nn.Sequential(*conv_block)
+
+#     def forward(self, x):
+#         return x + self.conv_block(x)
+
+
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, in_channel):
         super(ResidualBlock, self).__init__()
 
-        conv_block = [
-            nn.Conv2d(in_channel, in_channel, 3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(in_channel),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channel, in_channel, 3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(in_channel),
-        ]
+        self.conv1 = nn.Conv2d(in_channel, in_channel, 3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(in_channel, in_channel, 3, stride=1, padding=1, bias=False)
 
-        self.conv_block = nn.Sequential(*conv_block)
+        self.norm2d_1 = nn.InstanceNorm2d(in_channel)
+        self.norm2d_2 = nn.InstanceNorm2d(in_channel)
+        
+        self.norm1d_1 = nn.InstanceNorm1d(in_channel)
+        self.norm1d_2 = nn.InstanceNorm1d(in_channel)
+
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        return x + self.conv_block(x)
+        residual = x
+
+        # Check spatial dimensions to decide which normalization to apply
+        if x.size(2) > 1 and x.size(3) > 1:  # For spatial dimensions larger than 1x1
+            out = self.relu(self.norm2d_1(self.conv1(x)))
+            out = self.norm2d_2(self.conv2(out))
+        else:  # For 1x1 spatial dimensions
+            x_reshaped = x.squeeze(-1).squeeze(-1)    
+            out = self.relu(self.norm1d_1(self.conv1(x).squeeze(-1).squeeze(-1)))
+            out = self.norm1d_2(self.conv2(out.view(out.size(0), out.size(1), 1, 1)).squeeze(-1).squeeze(-1))
+            out = out.view(out.size(0), out.size(1), 1, 1)
+
+        return residual + out
+
 
 
 class Down(nn.Module):
@@ -387,74 +421,58 @@ class CXLoss(nn.Module):
         self.b = b
 
     def center_by_T(self, featureI, featureT):
-        # Calculate mean channel vector for feature map.
         meanT = featureT.mean(0, keepdim=True).mean(2, keepdim=True).mean(3, keepdim=True)
         return featureI - meanT, featureT - meanT
 
     def l2_normalize_channelwise(self, features):
-        # Normalize on channel dimension (axis=1)
+        epsilon = 1e-5
         norms = features.norm(p=2, dim=1, keepdim=True)
-        features = features.div(norms)
+        features = features.div(norms + epsilon)
         return features
 
     def patch_decomposition(self, features):
         N, C, H, W = features.shape
         assert N == 1
         P = H * W
-        # NCHW --> 1x1xCXHW --> HWxCx1x1
         patches = features.view(1, 1, C, P).permute((3, 2, 0, 1))
         return patches
 
     def calc_relative_distances(self, raw_dist, axis=1):
         epsilon = 1e-5
-        # [0] means get the value, torch min will return the index as well
         div = torch.min(raw_dist, dim=axis, keepdim=True)[0]
         relative_dist = raw_dist / (div + epsilon)
         return relative_dist
 
     def calc_CX(self, dist, axis=1):
+        dist = torch.clamp(dist, min=-10, max=10)
         W = torch.exp((self.b - dist) / self.sigma)
         W_sum = W.sum(dim=axis, keepdim=True)
         return W.div(W_sum)
 
     def forward(self, featureT, featureI):
-        '''
-        :param featureT: target
-        :param featureI: inference
-        :return:
-        '''
-
-        # print("featureT target size:", featureT.shape)
-        # print("featureI inference size:", featureI.shape)
-
         featureI, featureT = self.center_by_T(featureI, featureT)
-
         featureI = self.l2_normalize_channelwise(featureI)
         featureT = self.l2_normalize_channelwise(featureT)
 
         dist = []
         N = featureT.size()[0]
         for i in range(N):
-            # NCHW
             featureT_i = featureT[i, :, :, :].unsqueeze(0)
-            # NCHW
             featureI_i = featureI[i, :, :, :].unsqueeze(0)
             featureT_patch = self.patch_decomposition(featureT_i)
-            # Calculate cosine similarity
             dist_i = F.conv2d(featureI_i, featureT_patch)
             dist.append(dist_i)
 
-        # NCHW
         dist = torch.cat(dist, dim=0)
-
         raw_dist = (1. - dist) / 2.
-
         relative_dist = self.calc_relative_distances(raw_dist)
-
         CX = self.calc_CX(relative_dist)
 
         CX = CX.max(dim=3)[0].max(dim=2)[0]
         CX = CX.mean(1)
-        CX = -torch.log(CX)
+        CX = -torch.log(torch.clamp(CX, min=1e-8)) #find NaN too large or too small 
         CX = torch.mean(CX)
         return CX
+
+# This is the modified version of the CXLoss class.
+
