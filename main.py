@@ -313,6 +313,7 @@ def test_one_epoch(opts, test_logfile, test_epoch,
             test_img_B = test_batch['img_B'].to(device)
 
             test_attr_A_intensity = attr_unsuper_tolearn(test_fontembed_A)
+            print(test_attr_A_intensity.size())
             test_attr_A_intensity = test_attr_A_intensity.view(test_attr_A_intensity.size(0), test_attr_A_intensity.size(2))  # noqa
             test_attr_A_intensity = torch.sigmoid(3*test_attr_A_intensity)  # convert to [0, 1]
 
@@ -334,13 +335,16 @@ def test_one_epoch(opts, test_logfile, test_epoch,
             test_l1_loss += criterion_pixel(test_fake_B, test_img_B)
 
             i=0
+            img = []
             for character in test_fake_B:
+                img.append(character)
                 save_file = os.path.join(results_dir, f"{str(i).zfill(2)}.png")
                 save_image(255-character, save_file, nrow=1, normalize=True)
                 i+=1
-            # img_sample = torch.cat((test_img_A.data, test_fake_B.data, test_img_B.data), -2)
-            # save_file = os.path.join(results_dir, f"test_{test_epoch}_idx_{test_idx}.png")
-            # save_image(img_sample, save_file, nrow=62, normalize=True)
+
+            img_sample = torch.cat((test_img_A.data, test_fake_B.data, test_img_B.data), -2)
+            save_file = os.path.join(results_dir, f"all_characters.png")
+            save_image(img_sample, save_file, nrow=10, normalize=True)
 
         test_l1_loss = test_l1_loss / len(test_dataloader)
         test_msg = (
